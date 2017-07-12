@@ -1,7 +1,136 @@
-﻿<!DOCTYPE html>
-<html>
-<body>
-<h1>Savage lin say hello to you~</h1>
-<h2>Lorenzo Luo say hello to you~</h2>
-</body>
-</html>
+<!DOCTYPE html><html><head><title>IPC 机制</title><meta charset='utf-8'><link href='https://dn-maxiang.qbox.me/res-min/themes/marxico.css' rel='stylesheet'><style>
+.note-content  {font-family: Comic Sans MS, 'Helvetica Neue', Arial, 'Hiragino Sans GB', STHeiti, 'Microsoft YaHei', 'WenQuanYi Micro Hei', SimSun, Song, sans-serif;}
+
+</style></head><body><div id='preview-contents' class='note-content'>
+                        
+                    
+
+
+
+<h1 id="ipc-机制">IPC 机制</h1>
+
+<p><p class="note-tags "><code class="notebook">Android 笔记</code> <code>IPC</code> <code>跨进程</code> </p></p>
+
+<blockquote>
+  <p>IPC 是 Inter-Process Communication 的缩写，含义为进程间通信或跨进程通信，是指两个进程之间进行数据交换的过程。Android 中通过 Binder 可以轻松地实现进程间通信，也支持 Socket，通过 Socket 也可以实现任意两个终端之间的通信。</p>
+</blockquote>
+
+<div><div class="toc"><div class="toc">
+<ul>
+<li><a href="#ipc-机制">IPC 机制</a><ul>
+<li><a href="#1-android-中的多进程模式">1. Android 中的多进程模式</a><ul>
+<li><a href="#11-开启多进程模式">1.1 开启多进程模式</a></li>
+<li><a href="#12-多进程模式的运行机制">1.2 多进程模式的运行机制</a></li>
+</ul>
+</li>
+<li><a href="#2-ipc-基础概念">2. IPC 基础概念</a><ul>
+<li><a href="#21-serializable-接口">2.1 Serializable 接口</a></li>
+<li><a href="#22-parcelable-接口">2.2 Parcelable 接口</a></li>
+<li><a href="#23-binder">2.3 Binder</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+</div>
+
+
+
+<h2 id="1-android-中的多进程模式">1. Android 中的多进程模式</h2>
+
+
+
+<h3 id="11-开启多进程模式">1.1 开启多进程模式</h3>
+
+<p>正常情况下，在 Android 中多进程是指一个应用中存在多个进程的情况。在 Android 中使用多进程只有一种方法，就是给四大组件(Activity、Service、Receiver、ContentProvider) 在 AndroidMenifest 中指定 android:process 属性。因此无法给一个线程或一个实体类指定其运行时所在的进程。还有一种非常规的多进程方法，通过 JNI 在 native 层去 fork 一个新的进程。 <br>
+进程信息可以通过 DDMS 以及 shell 查看，shell 命令为：adb shell ps 或者 adb shell ps | grep ‘package name’。多进程的命名有两种方式，是否以”:”开头，区别为：以开头 “:” 的含义是指要在当前的进程名前面附加上当前的包名，这是一种简写的方法，属于当前应用的私有进程，其他应用的组件不可以和它跑在同一个进程中，而进程名不以 “:” 开头的进程属于全局进程，其他应用通过 ShareUID 方式可以和它跑在同一个进程中。 <br>
+Android 系统会为每个应用分配一个唯一的 UID，具有相同 UID 的应用才能共享数据。两个应用通过 ShareUID 跑在同一个进程中是有要求的，需要这两个应用有相同的 ShareUID 并且签名相同才可以。在这种情况下，它们相互访问对方的私有数据，如 data 数据、组件信息等，不管是否跑在同一个进程中，如果是跑在同一个进程中，那除了能共享 data 数据、组件信息，还能共享内存数据，可以看成一个应用的两个部分。</p>
+
+<hr>
+
+
+
+<h3 id="12-多进程模式的运行机制">1.2 多进程模式的运行机制</h3>
+
+<p>Android 为每一个应用分配了一个独立的虚拟机(每个进程都分配一个独立的虚拟机)，不同的虚拟机在内存分配上有不同的地址空间，这就导致在不同的虚拟机中访问同一个类会产生多份副本。 <br>
+多进程所带来的的主要影响是：所有运行在不同进程中的四大组件，只要需要通过内存来共享数据，都会共享失败。 <br>
+一般使用多进程会造成如下几个方面的问题：</p>
+
+<ol><li rel="1">静态成员和单例模式完全失效</li>
+<li rel="2">线程同步机制完全失效</li>
+<li rel="3">SharedPreferences 的可靠性下降</li>
+<li rel="4">Application 会多次创建</li>
+</ol>
+
+<p>SharePreference 不支持两个进程同时去执行写操作，否则会导致一定几率的数据丢失，因为 SharedPreferences 底层是通过读/写 XML 文件来实现，并发写会出现问题。当一个组件跑在一个新的进程中的时候，由于系统要在创建新的进程同时分配独立的虚拟机，所以这个过程其实就是启动一个应用的过程。因此，相当于系统有把这个应用重新启动了一遍。重新启动应用就会创建新的 Application。</p>
+
+<hr>
+
+
+
+<h2 id="2-ipc-基础概念">2. IPC 基础概念</h2>
+
+
+
+<h3 id="21-serializable-接口">2.1 Serializable 接口</h3>
+
+<p>Serializable 是 Java 所提供的一个序列化接口，是一个空接口，为对象提供标准的序列化和放序列化操作。序列化时，只需要实现 Serializable 接口并声明一个 serialVersionUID 即可。若不指定 serialVersionUID，反序列的时候可能会报错。</p>
+
+
+
+<h3 id="22-parcelable-接口">2.2 Parcelable 接口</h3>
+
+<p>若实现了 Parcelable 接口，则该类的对线就可以实现序列化并可以通过 Intent 和 Binder 传递。 <br>
+在序列化的工程中需要实现的功能有序列化、反序列化和内容描述功能有 writeToParcel 方法完成，最终通过 Parcel 中一系列 write 方法来完成的发序列化功能由 CREATOR 来完成，其内部标明了如何创建序列化对象和数组，并通过 Parcel 的一系列 read 方法来完成发序列化过程；内容描述功能有 describeContents 方法来完成，几乎所有情况下这个方法都应该返回 0，仅当当前对象中存在文件描述符时，此方法返回 1。若实体中有另一个可序列化对线，则它的反序列化过程需要传递当前线程的上下文类加载器，否则汇报无法找到类的错我。</p>
+
+<table>
+<thead>
+<tr>
+  <th align="left">方法</th>
+  <th align="left">功能</th>
+  <th align="left">标记位</th>
+</tr>
+</thead>
+<tbody><tr>
+  <td align="left">createFromParcel(Parcel in)</td>
+  <td align="left">从序列化后的对象中创建原始对象</td>
+  <td align="left"></td>
+</tr>
+<tr>
+  <td align="left">newArray(int size)</td>
+  <td align="left">创建指定长度的原始对象数组</td>
+  <td align="left"></td>
+</tr>
+<tr>
+  <td align="left">Bean(Parcel in)</td>
+  <td align="left">从序列化后的对象中创建原始对象</td>
+  <td align="left"></td>
+</tr>
+<tr>
+  <td align="left">writeToParcel(Parcel out, int flags)</td>
+  <td align="left">将当前对象写入序列化结构中，其中 flags 标识有两种值：0 或者 1。为 1 时标识当前对象需要作为返回值返回，不能立即释放资源</td>
+  <td align="left">PARCELABLE_WRITE_RETURN_VALUE</td>
+</tr>
+<tr>
+  <td align="left">describeContents</td>
+  <td align="left">返回当前对象的内容描述。如果含有文件描述符，返回 1，否则返回 0，几乎所有情况都返回 0</td>
+  <td align="left">CONTENTS_FILE_DESCRIPTOR</td>
+</tr>
+</tbody></table>
+
+
+<p>系统已经提供了许多实现了 Parcelable 接口的类，他们都是可以直接序列化的，比如 Intent、Bundle、Bitmap 等，同时 List 和 Map 也可以序列化，前提是里面的每个元素都可以序列化的。</p>
+
+<blockquote>
+  <p>Parcelable 主要用在内存序列化上，通过 Parcelable 将对象序列化到存储设备中或者将对象序列化后通过网络传输也是可以的，但是这个过程会比较复杂，因此这两种情况下建议使用 Serializable。</p>
+</blockquote>
+
+
+
+<h3 id="23-binder">2.3 Binder</h3>
+
+<p>Binder 是 Android 中的一个类，实现了 IBinder 接口。从 IPC 角度来说，Binder 是 Android 中的一种跨进程通信方式，Binder 还可以理解为一种虚拟的物理设备，设备驱动是 /dev/binder；从 Android Framework 角度来说，Binder 是 ServiceManager 连接各种 Manager(ActivityManager、WindowManager ..) 和 相应 ManagerService 的桥梁；从 Android 应用层来说，Binder 是客户端和服务端进行通信的媒介，当 bindService 的时候，服务端就会返回一个包含了服务端业务调用的 Binder 对象，通过这个 Binder 对象，客户端就可以获取服务端提供的服务或者数据，这里的服务包括普通服务和基于 AIDL 的服务。</p>
+
+<p>Android 开发中，Binder 主要用在 Service 中，包括 AIDL 和 Messenger，其中普通 Service 中的 Binder 不涉及进程间通信，所以较为简单，无法触及 Binder 的核心，而 Messenger 的底层其实是 AIDL。</p></div></body></html>
