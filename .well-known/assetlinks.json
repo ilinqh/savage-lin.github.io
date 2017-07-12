@@ -1,9 +1,0 @@
-[{
-  "relation": ["delegate_permission/common.handle_all_urls"],
-  "target": {
-    "namespace": "android_app",
-    "package_name": "com.savage.materialtest",
-    "sha256_cert_fingerprints":
-    ["72:D5:46:D6:10:17:98:4B:82:0F:A1:6C:DB:BC:9E:40:73:3E:BD:FD:27:94:D6:B4:A2:66:F0:C1:6A:74:4E:08"]
-  }
-}]
